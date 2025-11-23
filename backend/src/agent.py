@@ -22,33 +22,216 @@ logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
+import json
+import os
+
+# ----- Coffee order state -----
+
+ORDER_TEMPLATE = {
+    "drinkType": "",
+    "size": "",
+    "milk": "",
+    "extras": [],
+    "name": "",
+}
+
+# For now, assume single user → one order in memory
+current_order = None
+
+
+def is_order_complete(order: dict) -> bool:
+    return (
+        order["drinkType"]
+        and order["size"]
+        and order["milk"]
+        and order["name"]
+    )
+
+
+def next_missing_field(order: dict) -> str | None:
+    for field in ["drinkType", "size", "milk", "extras", "name"]:
+        if field == "extras":
+            # extras can be empty list – not mandatory
+            continue
+        if not order[field]:
+            return field
+    return None
+
+
+def parse_user_reply(order: dict, field: str, user_text: str) -> dict:
+    text = user_text.lower()
+
+    if field == "drinkType":
+        # naive parsing – you can refine later
+        if "latte" in text:
+            order["drinkType"] = "latte"
+        elif "cappuccino" in text:
+            order["drinkType"] = "cappuccino"
+        elif "americano" in text:
+            order["drinkType"] = "americano"
+        elif "espresso" in text:
+            order["drinkType"] = "espresso"
+        else:
+            order["drinkType"] = user_text.strip()
+
+    elif field == "size":
+        if "small" in text:
+            order["size"] = "small"
+        elif "medium" in text:
+            order["size"] = "medium"
+        elif "large" in text:
+            order["size"] = "large"
+        else:
+            order["size"] = user_text.strip()
+
+    elif field == "milk":
+        if "oat" in text:
+            order["milk"] = "oat milk"
+        elif "almond" in text:
+            order["milk"] = "almond milk"
+        elif "soy" in text:
+            order["milk"] = "soy milk"
+        elif "regular" in text or "normal" in text or "cow" in text:
+            order["milk"] = "regular milk"
+        else:
+            order["milk"] = user_text.strip()
+
+    elif field == "name":
+        # very simple – use entire text as name
+        order["name"] = user_text.strip().title()
+
+    # extras: we’ll allow user to mention them at any time
+    extras = []
+    if "extra shot" in text:
+        extras.append("extra shot")
+    if "whipped cream" in text:
+        extras.append("whipped cream")
+    if "caramel" in text:
+        extras.append("caramel drizzle")
+    if "vanilla" in text:
+        extras.append("vanilla syrup")
+
+    if extras:
+        # merge unique extras
+        order["extras"] = list({*order.get("extras", []), *extras})
+
+    return order
+
+
+def save_order_to_json(order: dict) -> None:
+    """Save order safely inside backend/src/orders folder."""
+
+    # 1️⃣ Always save relative to agent.py location
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    orders_dir = os.path.join(base_dir, "orders")
+    os.makedirs(orders_dir, exist_ok=True)  # creates folder if missing
+
+    # 2️⃣ Add useful metadata
+    order["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    order["order_id"] = f"ORD-{int(datetime.now().timestamp())}"
+
+    # 3️⃣ Main file → history of ALL orders
+    main_file = os.path.join(orders_dir, "orders.json")
+
+    # 4️⃣ Load previous history
+    data = []
+    if os.path.exists(main_file):
+        try:
+            with open(main_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if not isinstance(data, list):
+                    data = []
+        except Exception:
+            data = []
+
+    # 5️⃣ Append new order
+    data.append(order)
+
+    # 6️⃣ Save history
+    with open(main_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    # 7️⃣ Also save each order separately (optional but useful)
+    single_file = os.path.join(orders_dir, f"{order['order_id']}.json")
+    with open(single_file, "w", encoding="utf-8") as f:
+        json.dump(order, f, indent=2)
+
+    print(f"✔ Order saved to: {single_file}")
 
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
+            instructions="""
+You are a friendly barista for 'Moonbrew Coffee'.
+Your job is to take coffee orders using conversation.
+You must collect:
+  - drinkType (latte, espresso, americano, etc.)
+  - size (small / medium / large)
+  - milk (oat / almond / soy / regular)
+  - name (for the cup)
+Extras are optional: extra shot, caramel drizzle, whipped cream, vanilla syrup.
+
+--- RULES ---
+• Ask follow-up questions until all required fields are filled.
+• Be friendly and brief.
+• When order is complete → summarize + confirm.
+• Then save the order to JSON using save_order_to_json().
+• If user asks unrelated question → politely bring them back to ordering.
+"""
         )
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    async def on_message(self, ctx: AgentSession, message: str):
+        """
+        This function replaces @Agent.llm_chat_handler.
+        It automatically runs whenever user speaks.
+        """
+        global current_order
 
+        user_text = message.strip().lower()
+
+        # Start new order
+        if current_order is None or is_order_complete(current_order):
+            current_order = ORDER_TEMPLATE.copy()
+            await ctx.send("Welcome to Moonbrew Coffee! ☕ What would you like to order?")
+            return
+
+        # Fill the missing field
+        missing = next_missing_field(current_order)
+        if missing:
+            current_order = parse_user_reply(current_order, missing, user_text)
+
+        # Ask next info
+        missing = next_missing_field(current_order)
+        if missing:
+            prompts = {
+                "size": "Which size do you prefer — small, medium, or large?",
+                "milk": "Any milk preference? (regular / oat / almond / soy)",
+                "name": "What name should I write on the cup?",
+            }
+            await ctx.send(prompts.get(missing, "Tell me more about your order!"))
+            return
+
+        # Optional extras
+        if not current_order["extras"]:
+            await ctx.send(
+                "Any extras? (extra shot / caramel / whipped cream / vanilla) — or say 'no extras'"
+            )
+            return
+
+        # FINAL STEP → SAVE ORDER
+        save_order_to_json(current_order)
+
+        summary = (
+            f"☕ Order Summary:\n"
+            f"- {current_order['size'].title()} {current_order['drinkType'].title()}\n"
+            f"- Milk: {current_order['milk']}\n"
+            f"- Extras: {', '.join(current_order['extras']) or 'None'}\n"
+            f"- Name: {current_order['name']}\n"
+            "Thanks! I'll prepare that quickly. Want to order another one?"
+        )
+
+        await ctx.send(summary)
+        current_order = None  # Reset for next customer
 
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
