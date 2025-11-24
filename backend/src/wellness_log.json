@@ -1,0 +1,69 @@
+[
+  {
+    "timestamp": "2025-11-24T09:12:35",
+    "mood": "good",
+    "energy": "energetic",
+    "stresses": "none",
+    "goals": [
+      "complete frontend work"
+    ],
+    "self_care": "listen to a song",
+    "agent_summary": "User is feeling good and energetic today with no stresses. They plan to complete some frontend work and will listen to a song for self-care."
+  },
+  {
+    "timestamp": "2025-11-24T09:16:11",
+    "mood": "boring",
+    "energy": "low",
+    "stresses": "none",
+    "goals": [
+      "complete work fast"
+    ],
+    "self_care": "light movement",
+    "agent_summary": "User is feeling boring today with low energy and no stresses, aiming to complete work quickly, and plans some light movement for self-care."
+  },
+  {
+    "timestamp": "2025-11-24T09:21:22",
+    "mood": "good",
+    "energy": "energized",
+    "stresses": "none",
+    "goals": [
+      "complete a small project task"
+    ],
+    "self_care": "cup of tea",
+    "agent_summary": "User is feeling good and energized with no stress, aims to complete a small project task, and plans a cup of tea for self-care."
+  },
+  {
+    "timestamp": "2025-11-24T09:49:15",
+    "mood": "good",
+    "energy": "energized",
+    "stresses": "none",
+    "goals": [
+      "complete the backend of my project"
+    ],
+    "self_care": "listen to songs while working",
+    "agent_summary": "The user is feeling good and energized with no worries. Their goal is to complete the backend of their project, and they plan to listen to songs while working for self-care."
+  },
+  {
+    "timestamp": "2025-11-24T09:53:01",
+    "mood": "not good",
+    "energy": "low",
+    "stresses": "completing project fast",
+    "goals": [
+      "complete basic working model of the project"
+    ],
+    "self_care": "a short walk",
+    "agent_summary": "The user is not feeling good with low energy, stressed about completing a project fast, and aims to finish a basic working model today, planning a short walk for self-care."
+  },
+  {
+    "timestamp": "2025-11-24T09:57:20",
+    "mood": "good",
+    "energy": "great",
+    "stresses": "No",
+    "goals": [
+      "complete backend of project",
+      "database connection"
+    ],
+    "self_care": "listening to songs while working",
+    "agent_summary": "The user is feeling good with great energy and no stress. Today's goal is to complete the database connection for their project's backend, and they plan to listen to songs while working for self-care."
+  }
+]

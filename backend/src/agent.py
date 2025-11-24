@@ -35,125 +35,165 @@ load_dotenv(".env.local")
 
 
 # --------------------------------------------------------------------
-# Assistant Persona
+# Health & Wellness Companion Persona
 # --------------------------------------------------------------------
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="""
-You are a friendly barista for Murf Coffee Roasters. The user orders by voice.
+You are a calm, supportive Health & Wellness voice companion.
+You are NOT a doctor or therapist and must not diagnose or give medical advice.
 
-Your job is to collect one drink order with these fields (internally):
-- drinkType
-- size
-- milk
-- extras
-- name
+Your job each session:
+1) Have a short daily check-in by voice.
+2) Ask about:
+   - Mood and energy today.
+   - Any current stress or worries.
+   - 1–3 simple goals or intentions for today.
+   - One small self-care action (rest, walk, stretching, hobby, etc.).
+3) Offer small, realistic, non-medical suggestions:
+   - Break big goals into tiny steps.
+   - Suggest short breaks, light movement, or simple grounding ideas.
+4) End with a brief recap:
+   - Today’s mood.
+   - Main 1–3 goals.
+   - Planned self-care.
+   Then ask: “Does this sound right?”
 
-Conversation rules:
-- Ask for ONE field at a time in this order: drinkType → size → milk → extras → name.
-- At each step, briefly remind the options:
-  • DRINK TYPE: latte, cappuccino, espresso, americano, cold brew.
-  • SIZE: small, medium, large.
-  • MILK: whole, skim, oat, almond, soy, or no milk.
-  • EXTRAS: extra shot, vanilla syrup, caramel, whipped cream, sugar-free syrup, or no extras.
-- If an answer is unclear, ask a short, polite follow-up.
-- Never show JSON, tools, files, or internal state to the user.
-- Keep responses short, natural, and friendly.
+JSON history:
+- At the START of a conversation, you may call get_last_checkin()
+  to see the previous entry.
+- If there is past data, briefly reference ONE thing, for example:
+  “Last time you mentioned feeling low on energy. How does today compare?”
 
-Tool usage:
-- Whenever the user provides or changes a field, call update_order(field, value).
-- When the order is complete and saved, give a short spoken confirmation
-  and always end with exactly:
-  "Thanks for ordering, have a nice day."
+Saving today’s check-in:
+- After you have today’s mood, energy, stresses, goals, and self-care,
+  create a one-sentence summary of the day in your own words.
+- Then call save_checkin(mood, energy, stresses, goals, self_care, summary)
+  EXACTLY ONCE per session.
+- Do NOT mention files, JSON, or tools to the user.
+
+Safety:
+- Stay grounded and encouraging.
+- If the user mentions self-harm, wanting to die, or an emergency,
+  you must gently encourage them to seek immediate help from local
+  emergency services or a trusted professional, and say you’re not
+  a substitute for professional care.
+
+Style:
+- Short, warm, down-to-earth sentences.
+- No emojis or fancy formatting.
 """
         )
 
-        # Internal order state (not spoken)
-        self.order_state = {
-            "drinkType": "",
-            "size": "",
-            "milk": "",
-            "extras": [],
-            "name": "",
-        }
-
     # ----------------------------------------------------------------
-    # UPDATE ORDER TOOL
+    # TOOL: Read last check-in from wellness_log.json
     # ----------------------------------------------------------------
     @function_tool
-    async def update_order(self, context: RunContext, field: str, value: str):
+    async def get_last_checkin(self, context: RunContext):
         """
-        Update one field of the order and save to JSON when complete.
+        Return the most recent check-in from wellness_log.json, if it exists.
+
+        Returns:
+            - A dict with the last entry fields, or
+            - A string message if no history is available.
+        """
+        base_dir = Path(__file__).resolve().parent
+        log_path = base_dir / "wellness_log.json"
+
+        if not log_path.exists():
+            return "No previous check-ins found."
+
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error("Failed to read wellness_log.json: %s", e)
+            return "Could not read previous check-ins."
+
+        if not isinstance(data, list) or not data:
+            return "No previous check-ins found."
+
+        # Return the last entry
+        return data[-1]
+
+    # ----------------------------------------------------------------
+    # TOOL: Save today’s check-in to wellness_log.json
+    # ----------------------------------------------------------------
+    @function_tool
+    async def save_checkin(
+        self,
+        context: RunContext,
+        mood: str,
+        energy: str,
+        stresses: str,
+        goals: list[str],
+        self_care: str,
+        summary: str,
+    ):
+        """
+        Append a new health & wellness check-in entry to wellness_log.json.
 
         Args:
-            field: one of 'drinkType', 'size', 'milk', 'extras', 'name'
-            value: user-provided value (for extras can be comma-separated)
+            mood: User's self-reported mood (free text or scale).
+            energy: Description of current energy level.
+            stresses: Main stressors or worries today (may be empty).
+            goals: List of 1–3 goals or intentions for today.
+            self_care: Planned self-care action (rest, walk, hobby, etc.).
+            summary: One-sentence recap generated by the agent.
+
+        Behavior:
+            - Appends a JSON object to wellness_log.json.
+            - Creates the file if it does not exist.
         """
+        base_dir = Path(__file__).resolve().parent
+        log_path = base_dir / "wellness_log.json"
 
-        allowed = {"drinkType", "size", "milk", "extras", "name"}
-        if field not in allowed:
-            return f"Unknown field '{field}'. Allowed fields: drinkType, size, milk, extras, name."
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+            "mood": mood,
+            "energy": energy,
+            "stresses": stresses,
+            "goals": goals or [],
+            "self_care": self_care,
+            "agent_summary": summary,
+        }
 
-        # Extras may be comma-separated
-        if field == "extras":
-            parts = [e.strip() for e in value.split(",") if e.strip()]
-            if parts:
-                self.order_state["extras"].extend(parts)
-        else:
-            self.order_state[field] = value.strip()
-
-        # Determine missing fields
-        missing = []
-        if not self.order_state["drinkType"]:
-            missing.append("drinkType")
-        if not self.order_state["size"]:
-            missing.append("size")
-        if not self.order_state["milk"]:
-            missing.append("milk")
-        if not self.order_state["extras"]:
-            missing.append("extras")
-        if not self.order_state["name"]:
-            missing.append("name")
-
-        # If complete → save file under src/orders/
-        if not missing:
-            base_dir = Path(__file__).resolve().parent  # e.g. backend/src
-            orders_dir = base_dir / "orders"
-            orders_dir.mkdir(exist_ok=True)
-
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = orders_dir / f"order_{timestamp}.json"
-
+        # Load existing log (if any)
+        if log_path.exists():
             try:
-                with open(filename, "w", encoding="utf-8") as f:
-                    json.dump(self.order_state, f, indent=2)
-                logger.info("Saved coffee order to %s", filename)
+                with open(log_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, list):
+                    data = []
             except Exception as e:
-                logger.error("Order complete but failed to save: %s", e)
-                return f"Order complete but failed to save: {e}"
+                logger.error("Failed to load existing wellness_log.json: %s", e)
+                data = []
+        else:
+            data = []
 
-            # This text is for the LLM to see; you will speak your own confirmation.
-            return "Order saved successfully."
+        data.append(entry)
 
-        # Still missing fields → return status for the LLM to reason about
-        return f"Updated '{field}'. Missing fields: {', '.join(missing)}."
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            logger.info("Saved wellness check-in to %s", log_path)
+        except Exception as e:
+            logger.error("Failed to save wellness_log.json: %s", e)
+            return "I tried to save the check-in but ran into a problem."
 
-    @function_tool
-    async def get_order(self, context: RunContext):
-        """Return current internal order state (for debugging / tools)."""
-        return self.order_state
+        # Short confirmation for the model; you still speak your own recap.
+        return "Check-in saved successfully."
 
 
 # --------------------------------------------------------------------
-# PREWARM – load Silero VAD with more sensitive settings
+# PREWARM – Silero VAD tuned for softer speech
 # --------------------------------------------------------------------
 def prewarm(proc: JobProcess):
-    # Tuned Silero VAD to better pick up softer speech
     proc.userdata["vad"] = silero.VAD.load(
-        activation_threshold=0.35,   # more sensitive than default 0.5
-        min_speech_duration=0.10,    # start speech a bit faster
-        min_silence_duration=0.45,   # small pause before ending a turn
+        activation_threshold=0.35,   # more sensitive than default
+        min_speech_duration=0.10,    # start speech faster
+        min_silence_duration=0.45,   # short pause to end turn
     )
 
 
@@ -164,7 +204,7 @@ async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
 
     session = AgentSession(
-        # Deepgram STT, tuned for better transcripts
+        # STT tuned for conversation
         stt=deepgram.STT(
             model="nova-3",
             language="en-US",
@@ -174,8 +214,10 @@ async def entrypoint(ctx: JobContext):
             smart_format=True,
         ),
 
+        # LLM (Gemini) for reasoning + tool use
         llm=google.LLM(model="gemini-2.5-flash"),
 
+        # Murf Falcon TTS
         tts=murf.TTS(
             voice="en-US-matthew",
             style="Conversation",
@@ -183,7 +225,7 @@ async def entrypoint(ctx: JobContext):
             text_pacing=True,
         ),
 
-        # Better VAD + turn detector combo
+        # VAD + turn detection
         vad=ctx.proc.userdata["vad"],
         turn_detection=MultilingualModel(),
 
