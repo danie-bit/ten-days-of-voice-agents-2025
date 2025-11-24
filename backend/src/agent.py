@@ -1,4 +1,5 @@
 import logging
+import asyncio
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -12,8 +13,7 @@ from livekit.agents import (
     cli,
     metrics,
     tokenize,
-    # function_tool,
-    # RunContext
+    ChatMessageEvent,   # ✅ NEW: import event type for "message"
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -24,8 +24,42 @@ load_dotenv(".env.local")
 
 import json
 import os
+from datetime import datetime
 
-# ----- Coffee order state -----
+# ✅ STATIC PATH AT PROJECT ROOT
+WELLNESS_LOG_PATH = r"C:\Users\study\PycharmProjects\MurfaiChallengeNov\ten-days-of-voice-agents-2025\wellness_log.json"
+
+
+def load_wellness_history() -> list[dict]:
+    """Load previous entries from wellness_log.json"""
+    if not os.path.exists(WELLNESS_LOG_PATH):
+        return []
+    try:
+        with open(WELLNESS_LOG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def append_wellness_entry(entry: dict) -> None:
+    """Append key-value entry to wellness_log.json as a list of dicts"""
+    history = load_wellness_history()
+    history.append(entry)
+
+    try:
+        with open(WELLNESS_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2)
+
+        print("\n✔ JSON SAVED SUCCESSFULLY")
+        print("PATH:", WELLNESS_LOG_PATH)
+        print("DATA:", entry)
+
+    except Exception as e:
+        print("\n❌ ERROR WHILE SAVING JSON:", e)
+
+
+# ---------- Coffee order state (still here, for Day 2) ----------
 
 ORDER_TEMPLATE = {
     "drinkType": "",
@@ -35,8 +69,7 @@ ORDER_TEMPLATE = {
     "name": "",
 }
 
-# For now, assume single user → one order in memory
-current_order = None
+current_order = None  # not used in Day 3, but keeping it
 
 
 def is_order_complete(order: dict) -> bool:
@@ -51,7 +84,6 @@ def is_order_complete(order: dict) -> bool:
 def next_missing_field(order: dict) -> str | None:
     for field in ["drinkType", "size", "milk", "extras", "name"]:
         if field == "extras":
-            # extras can be empty list – not mandatory
             continue
         if not order[field]:
             return field
@@ -62,7 +94,6 @@ def parse_user_reply(order: dict, field: str, user_text: str) -> dict:
     text = user_text.lower()
 
     if field == "drinkType":
-        # naive parsing – you can refine later
         if "latte" in text:
             order["drinkType"] = "latte"
         elif "cappuccino" in text:
@@ -97,10 +128,8 @@ def parse_user_reply(order: dict, field: str, user_text: str) -> dict:
             order["milk"] = user_text.strip()
 
     elif field == "name":
-        # very simple – use entire text as name
         order["name"] = user_text.strip().title()
 
-    # extras: we’ll allow user to mention them at any time
     extras = []
     if "extra shot" in text:
         extras.append("extra shot")
@@ -112,7 +141,6 @@ def parse_user_reply(order: dict, field: str, user_text: str) -> dict:
         extras.append("vanilla syrup")
 
     if extras:
-        # merge unique extras
         order["extras"] = list({*order.get("extras", []), *extras})
 
     return order
@@ -120,20 +148,15 @@ def parse_user_reply(order: dict, field: str, user_text: str) -> dict:
 
 def save_order_to_json(order: dict) -> None:
     """Save order safely inside backend/src/orders folder."""
-
-    # 1️⃣ Always save relative to agent.py location
     base_dir = os.path.dirname(os.path.abspath(__file__))
     orders_dir = os.path.join(base_dir, "orders")
-    os.makedirs(orders_dir, exist_ok=True)  # creates folder if missing
+    os.makedirs(orders_dir, exist_ok=True)
 
-    # 2️⃣ Add useful metadata
     order["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     order["order_id"] = f"ORD-{int(datetime.now().timestamp())}"
 
-    # 3️⃣ Main file → history of ALL orders
     main_file = os.path.join(orders_dir, "orders.json")
 
-    # 4️⃣ Load previous history
     data = []
     if os.path.exists(main_file):
         try:
@@ -144,145 +167,218 @@ def save_order_to_json(order: dict) -> None:
         except Exception:
             data = []
 
-    # 5️⃣ Append new order
     data.append(order)
 
-    # 6️⃣ Save history
     with open(main_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-    # 7️⃣ Also save each order separately (optional but useful)
     single_file = os.path.join(orders_dir, f"{order['order_id']}.json")
     with open(single_file, "w", encoding="utf-8") as f:
         json.dump(order, f, indent=2)
 
     print(f"✔ Order saved to: {single_file}")
 
+
+# ---------- Wellness state (Day 3) ----------
+
+current_checkin = None
+current_stage = "idle"  # idle, mood, energy, stress, goals, selfcare, recap
+
+
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="""
-You are a friendly barista for 'Moonbrew Coffee'.
-Your job is to take coffee orders using conversation.
-You must collect:
-  - drinkType (latte, espresso, americano, etc.)
-  - size (small / medium / large)
-  - milk (oat / almond / soy / regular)
-  - name (for the cup)
-Extras are optional: extra shot, caramel drizzle, whipped cream, vanilla syrup.
+You are a calm, supportive, and grounded daily health & wellness companion.
+Your job is to have short daily check-ins with the user.
 
---- RULES ---
-• Ask follow-up questions until all required fields are filled.
-• Be friendly and brief.
-• When order is complete → summarize + confirm.
-• Then save the order to JSON using save_order_to_json().
-• If user asks unrelated question → politely bring them back to ordering.
+RULES:
+- You are NOT a doctor, therapist, or clinician.
+- You NEVER diagnose or mention specific mental health disorders.
+- You NEVER give medical advice or tell the user to start/stop medication.
+- Focus on mood, energy, stressors, simple goals, and gentle self-care.
+- Keep responses short, human, and practical.
+- Do NOT use the word 'recap' unless the check-in is fully complete.
+- Only give the recap after all questions have been answered.
+- Until then, ask only one question at a time.
+- for each question expect the straight answer if you got that , go for next question
 """
         )
 
-    async def on_message(self, ctx: AgentSession, message: str):
+    async def handle_message(self, ctx: AgentSession, message: str):
         """
-        This function replaces @Agent.llm_chat_handler.
-        It automatically runs whenever user speaks.
+        Custom state machine for Day 3:
+        mood → energy → stress → goals → selfcare → recap → save JSON
         """
-        global current_order
+        global current_checkin, current_stage
 
-        user_text = message.strip().lower()
-
-        # Start new order
-        if current_order is None or is_order_complete(current_order):
-            current_order = ORDER_TEMPLATE.copy()
-            await ctx.send("Welcome to Moonbrew Coffee! ☕ What would you like to order?")
+        user_text = (message or "").strip()
+        if not user_text:
             return
 
-        # Fill the missing field
-        missing = next_missing_field(current_order)
-        if missing:
-            current_order = parse_user_reply(current_order, missing, user_text)
+        # START NEW CHECK-IN
+        if current_checkin is None or current_stage == "idle":
+            history = load_wellness_history()
 
-        # Ask next info
-        missing = next_missing_field(current_order)
-        if missing:
-            prompts = {
-                "size": "Which size do you prefer — small, medium, or large?",
-                "milk": "Any milk preference? (regular / oat / almond / soy)",
-                "name": "What name should I write on the cup?",
+            last_line = ""
+            if history:
+                last = history[-1]
+                last_mood = last.get("mood", "unknown")
+                last_energy = last.get("energy", "unknown")
+                last_line = (
+                    f"Last time you mentioned feeling '{last_mood}' "
+                    f"with energy '{last_energy}'. "
+                )
+
+            current_checkin = {
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "mood": "",
+                "energy": "",
+                "stress": "",
+                "goals": [],
+                "self_care": "",
             }
-            await ctx.send(prompts.get(missing, "Tell me more about your order!"))
-            return
+            current_stage = "mood"
 
-        # Optional extras
-        if not current_order["extras"]:
-            await ctx.send(
-                "Any extras? (extra shot / caramel / whipped cream / vanilla) — or say 'no extras'"
+            ctx.say(
+                f"Good to see you again. {last_line}"
+                "How are you feeling today, in your own words?"
             )
             return
 
-        # FINAL STEP → SAVE ORDER
-        save_order_to_json(current_order)
+        # MOOD
+        if current_stage == "mood":
+            current_checkin["mood"] = user_text
+            current_stage = "energy"
+            ctx.say(
+                "Thanks for sharing that. "
+                "How would you describe your energy today? For example low, okay, or high."
+            )
+            return
 
-        summary = (
-            f"☕ Order Summary:\n"
-            f"- {current_order['size'].title()} {current_order['drinkType'].title()}\n"
-            f"- Milk: {current_order['milk']}\n"
-            f"- Extras: {', '.join(current_order['extras']) or 'None'}\n"
-            f"- Name: {current_order['name']}\n"
-            "Thanks! I'll prepare that quickly. Want to order another one?"
-        )
+        # ENERGY
+        if current_stage == "energy":
+            current_checkin["energy"] = user_text
+            current_stage = "stress"
+            ctx.say(
+                "Got it. Is there anything stressing you out or sitting on your mind right now?"
+            )
+            return
 
-        await ctx.send(summary)
-        current_order = None  # Reset for next customer
+        # STRESS
+        if current_stage == "stress":
+            current_checkin["stress"] = user_text
+            current_stage = "goals"
+            ctx.say(
+                "Thanks for being honest. "
+                "What are one to three things you’d like to get done today? "
+                "They can be very small."
+            )
+            return
+
+        # GOALS
+        if current_stage == "goals":
+            text = user_text.replace(" and ", ",")
+            parts = [p.strip() for p in text.split(",") if p.strip()]
+            current_checkin["goals"] = parts or [user_text.strip()]
+            current_stage = "selfcare"
+            ctx.say(
+                "Nice. And is there anything you want to do just for yourself today? "
+                "For example a short walk, some rest, hobbies, or time offline."
+            )
+            return
+
+        # SELF-CARE
+        if current_stage == "selfcare":
+            current_checkin["self_care"] = user_text
+            current_stage = "recap"
+
+            goals_str = "; ".join(current_checkin["goals"]) or "no specific goals"
+            recap = (
+                "Here is what I heard for today:\n"
+                f"- Mood: {current_checkin['mood']}\n"
+                f"- Energy: {current_checkin['energy']}\n"
+                f"- Stress: {current_checkin['stress']}\n"
+                f"- Goals: {goals_str}\n"
+                f"- Self-care: {current_checkin['self_care']}\n"
+                "Does this sound right to you?"
+            )
+            ctx.say(recap)
+            return
+
+        # RECAP CONFIRMATION → SAVE JSON
+        # FINAL SAVE – write JSON directly, do NOT read first, do NOT call helpers
+        if current_stage == "recap":
+            # Build a clean JSON object with just what we care about
+            entry = {
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "mood": current_checkin.get("mood", ""),
+                "energy": current_checkin.get("energy", ""),
+                "stress": current_checkin.get("stress", ""),
+                "goals": current_checkin.get("goals", []),
+                "self_care": current_checkin.get("self_care", ""),
+            }
+
+            try:
+                # This will CREATE wellness_log.json if it does not exist
+                with open(WELLNESS_LOG_PATH, "w", encoding="utf-8") as f:
+                    json.dump(entry, f, indent=2)
+
+                print("\n✔ wellness_log.json CREATED")
+                print("PATH:", WELLNESS_LOG_PATH)
+                print("DATA:", entry)
+
+            except Exception as e:
+                print("\n❌ ERROR while writing wellness_log.json:", e)
+
+            # Say closing line to user
+            ctx.say(
+                "Thanks for checking in today. "
+                "I’ve saved today’s check-in. If you want to talk again later, I’ll be here."
+            )
+
+            # Reset for next time
+            current_checkin = None
+            current_stage = "idle"
+            return
+
 
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 
 async def entrypoint(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using OpenAI, Cartesia, AssemblyAI, and the LiveKit turn detector
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
         stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+        llm=google.LLM(model="gemini-2.5-flash"),
         tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+            voice="en-US-matthew",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
+    # ✅ CORRECT EVENT HOOK FOR CHAT MESSAGES
+    @session.on("message")
+    def _on_user_message(ev: ChatMessageEvent):
+        # we only care about USER messages, not assistant responses
+        if ev.item.role != "user":
+            return
+        text = ev.item.text_content or ""
+        if not text:
+            return
+        # schedule our async state-machine handler
+        asyncio.create_task(session.agent.handle_message(session, text))
 
-    # Metrics collection, to measure pipeline performance
-    # For more information, see https://docs.livekit.io/agents/build/metrics/
+    # ---------- metrics ----------
     usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
@@ -296,25 +392,14 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
         agent=Assistant(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            # For telephony applications, use `BVCTelephony` for best results
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
 
-    # Join the room and connect to the user
     await ctx.connect()
 
 
