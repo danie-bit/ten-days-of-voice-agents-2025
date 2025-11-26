@@ -1,0 +1,13 @@
+[
+  {
+    "timestamp": "2025-11-25T14:30:35",
+    "mood": "Energetic",
+    "energy": "Energetic",
+    "stresses": "None",
+    "goals": [
+      "Join a parade"
+    ],
+    "self_care": "Reflect on motivation",
+    "agent_summary": "The user is feeling energetic and plans to join a parade today, with a self-care action of reflecting on their motivation."
+  }
+]
