@@ -1,0 +1,34 @@
+{
+  "company_name": "Dr. Reddy's Laboratories",
+  "about": "Dr. Reddy's Laboratories is an Indian multinational pharmaceutical company. It develops medicines across major sectors including oncology, gastroenterology, cardiology, and dermatology.",
+  "products": [
+    "Active Pharmaceutical Ingredients (APIs)",
+    "Generic formulations",
+    "Biologics",
+    "OTC medicines",
+    "Specialty medications"
+  ],
+  "pricing": {
+    "generic_medicines": "Affordable and competitive pricing.",
+    "bulk_orders": "Bulk pricing available for hospitals & distributors.",
+    "custom_research": "Custom pricing based on clinical needs."
+  },
+  "faq": [
+    {
+      "question": "What does your company do?",
+      "answer": "We provide affordable and innovative medicines across multiple therapeutic areas."
+    },
+    {
+      "question": "Do you offer bulk medicines for hospitals?",
+      "answer": "Yes. We provide bulk supply options for hospitals, distributors, and clinical partners."
+    },
+    {
+      "question": "Do you support contract research?",
+      "answer": "Yes. We offer custom research and development depending on clinical needs."
+    },
+    {
+      "question": "Who are your products for?",
+      "answer": "Hospitals, clinical researchers, pharma distributors, and healthcare professionals."
+    }
+  ]
+}
