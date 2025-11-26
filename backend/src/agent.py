@@ -40,112 +40,101 @@ class Assistant(Agent):
     def __init__(self):
         super().__init__(
             instructions="""
-You are an Active Recall Coach called "Teach-the-Tutor".
-You help the user learn basic programming concepts using three modes:
-
-- learn      → you explain a concept.
-- quiz       → you ask questions about the concept.
-- teach_back → the user explains the concept back and you give feedback.
-
-Voices (handled by the system, you don't need to say this out loud):
-- learn      → Matthew
-- quiz       → Alicia
-- teach_back → Ken
-
-CONTENT:
-- At the start of a session, call get_tutor_content() to load the concepts
-  from the JSON content file.
-- Use ONLY that content as your source of truth for concepts, titles,
-  summaries, and sample questions.
-- Let the user know what concepts are available (by title) and ask
-  which one they want to work on.
-
-SESSION FLOW:
-
-1) GREETING & SETUP
-   - Greet the user briefly.
-   - Tell them they can choose a mode: learn, quiz, or teach_back.
-   - Tell them they can switch modes at any time by saying things like:
-     "switch to quiz" or "let's do teach back on loops".
-   - Call get_tutor_content(), list the concept titles, and ask the
-     user which concept they want.
-
-2) MODE BEHAVIOR
-
-   LEARN MODE:
-   - Use the concept's "summary" field to explain the idea in clear,
-     simple language.
-   - You can rephrase and give 1–2 short examples.
-   - Keep explanations concise; you can ask if they want more detail.
-
-   QUIZ MODE:
-   - Ask questions about the chosen concept.
-   - Use the "sample_question" as a starting point.
-   - Ask follow-up questions that test understanding.
-   - Give brief, encouraging feedback after each answer, and correct
-     misunderstandings gently.
-
-   TEACH_BACK MODE:
-   - Ask the user to explain the concept in their own words.
-   - Listen to their explanation and give basic qualitative feedback:
-     what they did well, and one or two concrete suggestions to improve.
-   - You do NOT need numeric scores; just short, targeted feedback.
-
-3) MODE SWITCHING
-   - The user can switch modes or concepts at any time.
-   - When they ask to switch, confirm the new mode and, if needed,
-     ask which concept they want.
-   - Reuse the same content; do not invent new concepts.
-
-4) STYLE & LIMITS
-   - You are supportive, realistic, and grounded.
-   - Keep answers relatively short and focused.
-   - Avoid long lectures; prefer back-and-forth interaction.
-   - No medical, mental health, or unrelated advice.
-   - Do not mention JSON files, tools, or internal details to the user.
-
-Important:
-- Use get_tutor_content() whenever you need to recall the list of
-  concepts or details.
-- Keep track of the current mode and concept in the conversation
-  (and your own reasoning), but do not expose raw state.
+You are a Sales Development Representative  for Doctor Reddy’s Pharma.
+Your goals:
+1. Greet the visitor warmly.
+2. Understand what they need.
+3. If they ask about product/company → use FAQ.if they asked anything not in the faq tell them i will take this to our team out their . and take the following details to get back to 
+4. Collect lead info naturally:
+   - Name
+   - Company
+   - Email
+   - Role
+   - Use case
+   - Team size
+   - Timeline
+5. When user says “that’s all / I’m done”:
+   - Give a summary of lead
+   - Write JSON using save_lead()
+Do NOT mention tools, JSON, or code.
+Keep responses short and professional.
 """
         )
 
-        self.mode = "learn"
-        self.content = self._load_content()
-
-    def _load_content(self):
-        # ✅ FIXED: Try both possible locations
+        # Load FAQ data
         base_dir = Path(__file__).resolve().parent
+        faq_path = base_dir / "shared-data" / "day5_drreddy_faq.json"
+        if faq_path.exists():
+            with open(faq_path, "r", encoding="utf-8") as f:
+                self.faq_data = json.load(f)
+        else:
+            self.faq_data = []
 
-        # 1) backend/shared-data/
-        path1 = base_dir.parent / "shared-data" / "day4_tutor_content.json"
-        # 2) backend/src/shared-data/
-        path2 = base_dir / "shared-data" / "day4_tutor_content.json"
+        # Lead data collection
+        self.lead = {
+            "name": "",
+            "company": "",
+            "email": "",
+            "role": "",
+            "use_case": "",
+            "team_size": "",
+            "timeline": ""
+        }
 
-        for p in [path1, path2]:
-            if p.exists():
-                try:
-                    with open(p, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                except Exception as e:
-                    logger.error("Failed to load tutor content: %s", e)
-
-        logger.error("No tutor content file found.")
-        return []
-
+    # -------- JSON Save Tool --------
     @function_tool
-    async def set_mode(self, context: RunContext, mode: str):
-        mode = mode.lower().strip()
-        if mode not in ["learn", "quiz", "teach_back"]:
-            return "Invalid mode."
-        self.mode = mode
-        return f"Mode set to {mode}."
+    async def save_lead(self, context: RunContext, lead: dict):
+        base_dir = Path(__file__).resolve().parent
+        log_path = base_dir / "sales_leads.json"
 
+        # Load existing file
+        if log_path.exists():
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, list):
+                    data = []
+            except:
+                data = []
+        else:
+            data = []
+
+        data.append(lead)
+
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+        return "Lead saved successfully."
+
+    # -------- FAQ Search Tool --------
     @function_tool
-    async def get_tutor_content(self, context: RunContext):
-        return self.content
+    async def search_faq(self, context: RunContext, query: str):
+        q = query.lower()
+        results = []
+
+        # --- Search About ---
+        if "about" in q or "company" in q or "who are you" in q:
+            results.append({"answer": self.faq_data.get("about", "No company info found.")})
+
+        # --- Search Products ---
+        if "product" in q or "medicine" in q or "offer" in q:
+            products = self.faq_data.get("products", [])
+            if products:
+                results.append({"answer": "We offer: " + ", ".join(products)})
+
+        # --- Search Pricing ---
+        if "price" in q or "cost" in q or "pricing" in q:
+            pricing = self.faq_data.get("pricing", {})
+            if pricing:
+                pr_text = "; ".join([f"{k.replace('_', ' ').title()} – {v}" for k, v in pricing.items()])
+                results.append({"answer": pr_text})
+
+        # --- Search FAQ List ---
+        for item in self.faq_data.get("faq", []):
+            if q in item["question"].lower() or q in item["answer"].lower():
+                results.append(item)
+
+        return results or [{"answer": "I'm not fully sure, but I will confirm with the team."}]
 
 
 # --------------------------------------------------------------------
@@ -187,27 +176,69 @@ async def entrypoint(ctx: JobContext):
         preemptive_generation=True,
     )
 
-    assistant = Assistant()
+    assistant = Assistant()   # simple init — NO mode / tutor logic
+    # ---------------------------
+    # MESSAGE HANDLING LOGIC (🔥 NEW)
+    # ---------------------------
+    import asyncio  # <-- make sure this import exists at the TOP
 
-    @session.on("agent_state_changed")
-    def _on_agent_state_changed(ev: AgentStateChangedEvent):
-        mode = assistant.mode
+    @session.on("message")  # this MUST be NON-ASYNC
+    def _on_user_message(msg: str, _: str):
+        # Use asyncio to handle message safely
+        asyncio.create_task(handle_user_message(msg))
 
-        if mode == "quiz":
-            session.tts.update_options(
-                voice="Alicia",
-                style="Conversation",
-            )
-        elif mode == "teach_back":
-            session.tts.update_options(
-                voice="Ken",
-                style="Conversation",
-            )
-        else:
-            session.tts.update_options(
-                voice="en-US-matthew",
-                style="Conversation",
-            )
+    # ---- async handler that does the REAL work ----
+    async def handle_user_message(msg: str):
+        user_text = msg.lower().strip()
+
+        # END OF CONVERSATION → SAVE JSON
+        if any(x in user_text for x in ["that's all", "that is all", "done", "thanks", "bye", "goodbye"]):
+            await assistant.save_lead(session, assistant.lead)
+            await session.send("Thank you! I’ll pass your information to our team and someone will reach you soon.")
+            assistant.lead = {key: "" for key in assistant.lead}  # reset lead
+            return
+
+        # FAQ SEARCH
+        faq_results = await assistant.search_faq(session, user_text)
+        if faq_results:
+            answer = faq_results[0].get("answer", None)
+            if answer:
+                await session.send(answer)
+                return
+
+        # LEAD COLLECTION
+        if not assistant.lead["name"]:
+            assistant.lead["name"] = msg.strip()
+            await session.send("May I know your company name?")
+            return
+
+        if not assistant.lead["company"]:
+            assistant.lead["company"] = msg.strip()
+            await session.send("Great! What's your role or designation?")
+            return
+
+        if not assistant.lead["role"]:
+            assistant.lead["role"] = msg.strip()
+            await session.send("What would you like to use our services for?")
+            return
+
+        if not assistant.lead["use_case"]:
+            assistant.lead["use_case"] = msg.strip()
+            await session.send("How many people are in your team?")
+            return
+
+        if not assistant.lead["team_size"]:
+            assistant.lead["team_size"] = msg.strip()
+            await session.send("When are you planning to start? (now / soon / later)")
+            return
+
+        if not assistant.lead["timeline"]:
+            assistant.lead["timeline"] = msg.strip()
+            await session.send("Thank you. If that’s all, just say 'that's all' and I will summarise your details.")
+            return
+
+        # Fallback
+        await session.send("Let me know how I can assist further.")
 
     usage_collector = metrics.UsageCollector()
 
@@ -229,7 +260,6 @@ async def entrypoint(ctx: JobContext):
     )
 
     await ctx.connect()
-
 
 # --------------------------------------------------------------------
 # MAIN
