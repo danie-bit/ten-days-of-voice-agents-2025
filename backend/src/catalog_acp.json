@@ -1,0 +1,82 @@
+[
+  {
+    "id": "item_001",
+    "name": "Classic White Coffee Mug",
+    "price": 450,
+    "currency": "INR",
+    "category": "Home & Kitchen",
+    "description": "Minimalist ceramic mug."
+  },
+  {
+    "id": "item_002",
+    "name": "Men's Black Hoodie (M)",
+    "price": 1200,
+    "currency": "INR",
+    "category": "Apparel",
+    "description": "Cotton blend hoodie."
+  },
+  {
+    "id": "item_003",
+    "name": "Wireless Bluetooth Earbuds",
+    "price": 2500,
+    "currency": "INR",
+    "category": "Electronics",
+    "description": "Noise cancelling, 20h battery."
+  },
+  {
+    "id": "item_004",
+    "name": "Organic Green Tea (50 Pack)",
+    "price": 350,
+    "currency": "INR",
+    "category": "Grocery",
+    "description": "Premium tea leaves."
+  },
+  {
+    "id": "item_005",
+    "name": "Running Shoes (Size 9)",
+    "price": 3800,
+    "currency": "INR",
+    "category": "Footwear",
+    "description": "Lightweight training shoes."
+  },
+  {
+    "id": "item_006",
+    "name": "Smart Watch Series 5",
+    "price": 4500,
+    "currency": "INR",
+    "category": "Electronics",
+    "description": "Fitness tracker with heart rate monitor."
+  },
+  {
+    "id": "item_007",
+    "name": "Stainless Steel Water Bottle",
+    "price": 850,
+    "currency": "INR",
+    "category": "Home & Kitchen",
+    "description": "Insulated 1L bottle, keeps water cold for 12h."
+  },
+  {
+    "id": "item_008",
+    "name": "Denim Jacket (Unisex)",
+    "price": 2200,
+    "currency": "INR",
+    "category": "Apparel",
+    "description": "Vintage wash, regular fit."
+  },
+  {
+    "id": "item_009",
+    "name": "RGB Mechanical Keyboard",
+    "price": 3200,
+    "currency": "INR",
+    "category": "Electronics",
+    "description": "Blue switches, customizable backlight."
+  },
+  {
+    "id": "item_010",
+    "name": "Yoga Mat 6mm",
+    "price": 900,
+    "currency": "INR",
+    "category": "Fitness",
+    "description": "Anti-slip texture, eco-friendly material."
+  }
+]
