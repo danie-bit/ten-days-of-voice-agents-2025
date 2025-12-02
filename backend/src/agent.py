@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import random
 from datetime import datetime
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -21,125 +22,133 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
-# --- 1. LOAD CATALOG ---
-# Changed filename as requested
-CATALOG_FILE = "catalog.json"
-ORDER_FILE = "orders.json"
+# --- IMPROV SCENARIOS ---
+SCENARIOS = [
+    "You are a time-travelling tour guide explaining smartphones to someone from the 1800s.",
+    "You are a barista telling a customer their latte is a portal to another dimension.",
+    "You are a waiter explaining that their order escaped the kitchen.",
+    "You are a customer returning a clearly cursed object to a skeptical shop owner.",
+    "You are a pizza delivery person who delivered to the wrong century.",
+    "You are a therapist counseling a robot that thinks it’s becoming human.",
+    "You are a librarian trying to quiet down time-traveling vikings.",
+    "You are a tech support agent helping someone use a magic wand.",
+    "You are a wedding planner helping a ghost marry a vampire.",
+    "You are a museum tour guide and all the exhibits come to life.",
+]
 
-def load_catalog():
-    try:
-        with open(CATALOG_FILE, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"⚠️ Error loading catalog: {e}. Creating empty list.")
-        return []
+POSITIVE_REACTIONS = [
+    "That was awesome! I loved how you handled {detail}. Great energy!",
+    "Amazing performance! Your use of {detail} really stood out.",
+    "Nice! The {detail} part was especially fun.",
+    "Fantastic! You really leaned into it with {detail}.",
+]
 
-PRODUCTS = load_catalog()
-# Convert to string for LLM context
-CATALOG_CONTEXT = json.dumps(PRODUCTS, indent=2)
+NEUTRAL_REACTIONS = [
+    "Good effort! The {detail} worked, but you can push it a bit more.",
+    "Not bad! I liked {detail}, though the pacing could improve.",
+    "Solid! You used {detail} nicely, but it felt like you held back.",
+    "Pretty good! {detail} had potential — keep exploring it.",
+]
 
-# --- 2. COMMERCE AGENT ---
-class CommerceAgent(Agent):
+CRITICAL_REACTIONS = [
+    "Hmm, that felt a little flat. The {detail} could use stronger delivery.",
+    "I see the idea with {detail}, but it lacked energy.",
+    "You had something with {detail}, but it didn’t fully land.",
+    "The {detail} started well but fizzled — don’t be afraid to go big!",
+]
+
+def get_random_reaction(detail="your performance"):
+    rtype = random.choice(["positive", "neutral", "critical"])
+    if rtype == "positive":
+        template = random.choice(POSITIVE_REACTIONS)
+    elif rtype == "neutral":
+        template = random.choice(NEUTRAL_REACTIONS)
+    else:
+        template = random.choice(CRITICAL_REACTIONS)
+    return template.format(detail=detail)
+
+
+# --- AGENT ---
+class ImprovBattleAgent(Agent):
     def __init__(self):
         super().__init__(
             instructions=(
-                "You are 'VoiceCart', a friendly and efficient voice shopping assistant.\n"
-                "Your goal is to help users browse products, manage their cart, and checkout seamlessly.\n\n"
-                f"CATALOG DATA:\n{CATALOG_CONTEXT}\n\n"
-                "OPERATIONAL RULES:\n"
-                "1. CATALOG STRICTNESS: You can ONLY sell items listed in the CATALOG DATA. If a user asks for a product not listed, politely inform them it is unavailable.\n"
-                "2. CART MANAGEMENT: When a user indicates they want an item (e.g., 'I'll take two', 'add that'), IMMEDIATELY call the `add_to_cart` tool. Do not just verbally confirm.\n"
-                "3. CART REVIEW: If a user asks 'what is in my cart' or 'read my list', call the `check_cart` tool to get the current state.\n"
-                "4. CHECKOUT LOGIC: Only call `checkout_and_pay` when the user explicitly says 'place order', 'buy it', or 'checkout'. Do NOT auto-checkout after adding items.\n"
-                "5. VOICE OPTIMIZATION: Keep your responses concise, conversational, and punchy. Avoid long lists or complex markdown as this is a voice interaction."
+                "You are the host of IMPROV BATTLE — energetic, fun, and clear.\n"
+                "GAME FLOW:\n"
+                "- Welcome contestant, get their name.\n"
+                "- Explain the game briefly.\n"
+                "- Run exactly 3 improv rounds.\n"
+                "Each round:\n"
+                "1. Present a scenario.\n"
+                "2. Say 'Action!' and listen.\n"
+                "3. When contestant finishes, call get_host_reaction.\n"
+                "4. Share reaction.\n"
+                "After 3 rounds, call end_game.\n"
+                "Keep responses short, punchy, and natural.\n"
             )
         )
-        # In-memory cart state
-        self.cart = []
 
-    @function_tool
-    async def add_to_cart(self, context: RunContext, product_name: str, quantity: int):
-        """Add an item to the shopping cart."""
-        print(f"🛒 ADDING TO CART: {product_name} x {quantity}")
-        
-        # Fuzzy match
-        selected = None
-        for p in PRODUCTS:
-            if product_name.lower() in p['name'].lower():
-                selected = p
-                break
-        
-        if not selected:
-            return f"Error: '{product_name}' not found in catalog."
-
-        self.cart.append({
-            "name": selected['name'],
-            "qty": quantity,
-            "price": selected['price'],
-            "currency": selected['currency']
-        })
-        
-        return f"Added {quantity}x {selected['name']} to cart. Say 'Checkout' to finish."
-
-    @function_tool
-    async def checkout_and_pay(self, context: RunContext):
-        """Finalize the order and save to file."""
-        print("💳 CHECKING OUT...")
-        if not self.cart:
-            return "Your cart is empty."
-        
-        total = sum(item['qty'] * item['price'] for item in self.cart)
-        currency = self.cart[0]['currency']
-        
-        order = {
-            "order_id": f"ORD-{int(datetime.now().timestamp())}",
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "items": self.cart,
-            "total_amount": total,
-            "currency": currency,
-            "status": "CONFIRMED"
+        self.state = {
+            "player_name": "Ajit",
+            "current_round": 0,
+            "max_rounds": 3,
+            "phase": "intro",
+            "scenarios_used": [],
+            "reactions": [],
+            "game_started": False
         }
 
-        # Save to file safely
-        history = []
-        if os.path.exists(ORDER_FILE):
-            try:
-                with open(ORDER_FILE, "r") as f:
-                    history = json.load(f)
-            except:
-                history = []
-        
-        history.append(order)
-        
-        with open(ORDER_FILE, "w") as f:
-            json.dump(history, f, indent=2)
-            
-        # Clear cart
-        self.cart = []
-        return f"Order placed! ID: {order['order_id']}. Total: {total} {currency}."
+    @function_tool
+    async def start_game(self, context: RunContext, player_name: str):
+        self.state["player_name"] = player_name
+        self.state["game_started"] = True
+        self.state["phase"] = "intro"
+        return f"Game started for {player_name}! Let's begin."
 
     @function_tool
-    async def check_cart(self, context: RunContext):
-        """List items currently in the cart."""
-        if not self.cart:
-            return "Cart is empty."
-        
-        summary_list = []
-        for i in self.cart:
-            summary_list.append(f"{i['qty']}x {i['name']}")
-            
-        return f"Cart contains: {', '.join(summary_list)}"
+    async def present_scenario(self, context: RunContext):
+        if self.state["current_round"] >= self.state["max_rounds"]:
+            return "All rounds complete."
 
+        available = [s for s in SCENARIOS if s not in self.state["scenarios_used"]]
+        if not available:
+            available = SCENARIOS
+
+        scenario = random.choice(available)
+        self.state["scenarios_used"].append(scenario)
+        self.state["current_round"] += 1
+        self.state["phase"] = "awaiting_improv"
+
+        return f"Round {self.state['current_round']}: {scenario}"
+
+    @function_tool
+    async def get_host_reaction(self, context: RunContext, performance_summary: str):
+        reaction = get_random_reaction(performance_summary)
+        self.state["phase"] = "reacting"
+
+        self.state["reactions"].append({
+            "round": self.state["current_round"],
+            "scenario": self.state["scenarios_used"][-1],
+            "reaction": reaction
+        })
+
+        return reaction
+
+    @function_tool
+    async def end_game(self, context: RunContext):
+        self.state["phase"] = "done"
+        return f"Improv Battle complete! {self.state['player_name']} finished {self.state['current_round']} rounds."
+
+
+# --- LIVEKIT RUNTIME ---
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
-    print(f"🚀 CONNECTED TO ROOM: {ctx.room.name}")
-    
-    # Safe Voice (Matthew)
+
     tts = murf.TTS(
-        voice="en-US-matthew", 
+        voice="en-US-terrell",
         style="Conversation",
         tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
         text_pacing=True
@@ -153,8 +162,16 @@ async def entrypoint(ctx: JobContext):
         vad=ctx.proc.userdata["vad"],
     )
 
-    await session.start(agent=CommerceAgent(), room=ctx.room, room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVC()))
-    await session.agent.say("Hi! Welcome to InstaShop. What can I get for you?", allow_interruptions=True)
+    await session.start(
+        agent=ImprovBattleAgent(),
+        room=ctx.room,
+        room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVC())
+    )
+
+    await session.agent.say(
+        "Welcome to IMPROV BATTLE! I'm your host. What’s your name?",
+        allow_interruptions=True
+    )
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
