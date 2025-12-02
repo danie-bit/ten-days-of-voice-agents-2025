@@ -1,61 +1,120 @@
 import { Button } from '@/components/livekit/button';
+import { useState } from 'react';
 
-function WelcomeImage() {
+function ImprovBattleIcon() {
   return (
     <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
+      width="70"
+      height="70"
+      viewBox="0 0 80 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
+      className="mb-6 opacity-90"
     >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
+      <circle cx="28" cy="35" r="18" fill="#8B5CF6" />
+      <circle cx="52" cy="35" r="18" fill="#EC4899" />
+      <path d="M22 38 Q28 42 34 38" stroke="white" strokeWidth="2" fill="none" />
+      <circle cx="24" cy="32" r="2" fill="white" />
+      <circle cx="32" cy="32" r="2" fill="white" />
+      <path d="M46 42 Q52 38 58 42" stroke="white" strokeWidth="2" fill="none" />
+      <circle cx="48" cy="32" r="2" fill="white" />
+      <circle cx="56" cy="32" r="2" fill="white" />
+      <rect x="36" y="50" width="8" height="20" rx="4" fill="#8B5CF6" />
     </svg>
   );
 }
 
 interface WelcomeViewProps {
-  startButtonText: string;
-  onStartCall: () => void;
+  startButtonText?: string;
+  onStartCall: (playerName: string) => void;
 }
 
 export const WelcomeView = ({
-  startButtonText,
+  startButtonText = "Start Improv Battle",
   onStartCall,
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
+  const [playerName, setPlayerName] = useState('');
+  const [error, setError] = useState('');
+
+  const handleStart = () => {
+    if (!playerName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+    setError('');
+    onStartCall(playerName.trim());
+  };
+
   return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+    <div ref={ref} className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col items-center justify-center px-4">
+      {/* Card */}
+      <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-10 max-w-lg w-full shadow-xl text-center">
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
+        <ImprovBattleIcon />
+
+        <h1 className="text-4xl font-extrabold text-white mb-3">
+          Improv Battle
+        </h1>
+
+        <p className="text-gray-300 mb-2 text-base">
+          A simple and fun 3-round improvisation challenge.
         </p>
 
-        <Button variant="primary" size="lg" onClick={onStartCall} className="mt-6 w-64 font-mono">
-          {startButtonText}
+        <p className="text-gray-400 mb-8 text-sm">
+          Enter your stage name to begin.
+        </p>
+
+        {/* Input */}
+        <input
+          type="text"
+          value={playerName}
+          onChange={(e) => {
+            setPlayerName(e.target.value);
+            setError('');
+          }}
+          placeholder="Your stage name..."
+          className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+        />
+
+        {error && (
+          <p className="text-red-400 text-xs mt-2">
+            {error}
+          </p>
+        )}
+
+        {/* Button */}
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleStart}
+          disabled={!playerName.trim()}
+          className="w-full mt-6 rounded-xl bg-purple-600 hover:bg-purple-500 transition font-semibold py-3 disabled:opacity-50"
+        >
+          🎭 {startButtonText}
         </Button>
-      </section>
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
-          >
-            Voice AI quickstart
-          </a>
-          .
-        </p>
+        {/* Features */}
+        <div className="grid grid-cols-3 gap-4 mt-10 text-sm">
+          <div className="bg-gray-900 p-4 rounded-xl border border-gray-700">
+            <div className="text-2xl">🎬</div>
+            <p className="text-white mt-1 font-medium">3 Rounds</p>
+          </div>
+          <div className="bg-gray-900 p-4 rounded-xl border border-gray-700">
+            <div className="text-2xl">🤖</div>
+            <p className="text-white mt-1 font-medium">AI Host</p>
+          </div>
+          <div className="bg-gray-900 p-4 rounded-xl border border-gray-700">
+            <div className="text-2xl">⭐</div>
+            <p className="text-white mt-1 font-medium">Live Score</p>
+          </div>
+        </div>
       </div>
+
+      {/* Footer */}
+      <footer className="mt-6 text-gray-500 text-xs">
+        Powered by Murf Falcon TTS • Voice Agent Challenge
+      </footer>
     </div>
   );
 };
